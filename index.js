@@ -1,12 +1,5 @@
 const express = require('express')
-const session = require('express-session');
-const app = express()
-app.use(session({
-    secret: 's3Cur3',
-    name: 'sessionId',
-})
-);
-app.use(express.json())
+const jwt = require('jsonwebtoken');
 
 const port = 3000
 
@@ -36,6 +29,32 @@ const rooms = {
     }
 }
 
+const app = express();
+
+const secret = "Secret";
+
+app.use(express.json())
+
+
+app.use("/secure/*", (req, res, next) => {
+    const token = ((req.headers.authorization || "").match(/^bearer (.*)$/i) || [])[1]
+    try {
+        const decoded = jwt.decode(token);
+        const username = decoded.user;
+        if (username) {
+            const user = users.find(user => user.name === username);
+            if (user) {
+                jwt.verify(token, secret + user.password);
+                return next();
+            }
+        }
+        res.status(403).send("Unauthenticated!");
+    } catch {
+        res.status(403).send("Unauthenticated!");
+    }
+})
+
+
 app.get('/room', (req, res) => {
     res.json(rooms);
 })
@@ -50,16 +69,11 @@ app.get('/room/:id', (req, res) => {
     }
 })
 
-app.post('/room', (req, res) => {
-    const user = req.session.user;
-    if (user) {
-        const id = Object.keys(rooms).length + 1
-        const room = { id, name: req.body.name }
-        rooms[id] = room
-        res.json(room)
-    } else {
-        res.status(403).send("Unauthenticated!");
-    }
+app.post('/secure/room', (req, res) => {
+    const id = Object.keys(rooms).length + 1
+    const room = { id, name: req.body.name }
+    rooms[id] = room
+    res.json(room)
 })
 
 app.post('/login', (req, res) => {
@@ -68,19 +82,14 @@ app.post('/login', (req, res) => {
     const user = users.find(user => user.name === name && user.password === pass)
 
     if (user) {
-        req.session.user = name
-        res.send("ok");
+        const token = jwt.sign({ user: user.name }, secret + user.password);
+        res.json({
+            token
+        });
     } else {
         res.status(401).send("ko");
     }
 })
-
-
-app.post('/logout', (req, res) => {
-    req.session.destroy();
-    res.send("ok");
-})
-
 
 
 app.listen(port, () => console.log(`Example app listening on port ${port}!`))
